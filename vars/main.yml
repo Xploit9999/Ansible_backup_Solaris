@@ -1,0 +1,6 @@
+---    
+pool: rpool
+fs: /backups
+nfs: 192.168.124.1:/backups
+snapshot: rpool@archive
+...

@@ -1,0 +1,9 @@
+---
+- name: Realiza backup (zfs)
+  shell: /usr/bin/nohup /usr/sbin/zfs send -R "{{ snapshot }}" | /usr/bin/gzip > "{{ fs }}"/"{{ ansible_hostname }}"/`hostname`_`date +%F`.zfs.gz &
+
+- name: Se desmonta nfs
+  mount:
+    path: "{{ fs }}"
+    state: unmounted
+

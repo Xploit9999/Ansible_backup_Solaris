@@ -1,0 +1,42 @@
+---
+- name: Backup ZFS | si el NFS "{{ fs }}" se monto correctamente, se procedera con el backup
+  block:
+
+  - name: Backup ZFS | Elimina snapshot viejo si lo hay
+    zfs:
+      name: "{{ snapshot }}"
+      state: absent
+
+  - name: Backup ZFS | Lista filesystem del rpool y excluye los filesystem de swap,kvol,@ y dump
+    shell: /usr/sbin/zfs list -rH -o name "{{ pool }}" | /usr/bin/egrep -v "swap|kvol|@|dump"
+    register: fs_zfs
+
+  - name: Backup ZFS | Toma snapshot de cada filesystem del rpool
+    shell: /usr/sbin/zfs snapshot "{{ item }}"@archive
+    with_items:
+      - "{{ fs_zfs.stdout_lines }}"
+    notify: "Realiza backup (zfs)"
+
+  - meta: flush_handlers
+
+  - name: Backup ZFS | Captura el pid del proceso para hacerle seguimiento
+    shell: pgrep zfs | awk '$1>100'
+    register: pid
+
+  - name: Backup ZFS | Espera y corrobora que el proceso de la toma del backup ya no este en ejecución
+    wait_for:
+      path: /proc/{{ pid.stdout }}/status
+      state: absent
+      delay: 10
+      timeout: 14400
+
+  - name: Backup ZFS | Terminado el backup, se elimina el snapshot que se tomo previamente.
+    zfs:
+      name: "{{ snapshot }}"
+      state: absent
+    notify: "Se desmonta nfs"
+
+  - meta: flush_handlers
+
+  when: fs_montado.changed != "true"
+...

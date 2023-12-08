@@ -1,0 +1,27 @@
+---
+- name: si el nfs "{{ fs }}" se monto procedera con el backup
+  block:
+
+  - name: Realiza backup 
+    shell: /usr/bin/nohup /usr/sbin/ufsdump 0f "{{ fs }}"/"{{ ansible_hostname }}"/`hostname`_`date +%F`.ufsdump / 
+
+  - name: captura pid
+    shell: /usr/bin/pgrep ufsdump
+    register: pid_ufs
+    ignore_errors: true
+
+  - name: Espera a que finalice el proceso.
+    wait_for:
+      path: /proc/{{ item }}/status
+      state: absent
+      delay: 10
+      timeout: 7200
+    with_items:
+      - "{{ pid_ufs.stdout_lines }}"
+    ignore_errors: true
+    notify: "Se desmonta nfs"
+
+  - meta: flush_handlers
+
+  when: fs_montado.changed != "true"    
+...
