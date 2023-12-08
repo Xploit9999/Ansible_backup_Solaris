@@ -1,0 +1,70 @@
+---
+- name: Playbook para ejecutar backup sobre Solaris11/10 en sistemas de archivos (ZFS/UFS)
+  hosts: all 
+  gather_facts: true
+  become: true
+  environment:
+    PATH: /usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/sbin:/bin
+  handlers:
+    - import_tasks: handlers/main.yml
+  vars_files:
+    - vars/main.yml
+  serial: 50
+  tasks:
+
+  - name: Desmonta nfs "{{ fs }}" POR si se encuentra montado previamente. 
+    mount:
+      path: "{{ fs }}"
+      state: unmounted
+    async: 20
+    poll: 1
+    ignore_errors: true
+
+  - name: Crea directorio "{{ fs }}"  para el montaje del NFS en caso de que no este
+    file:
+      path: "{{ fs }}"
+      state: directory
+
+  - name: Monta el NFS "{{ fs }}" del servidor centralizado
+    shell: /usr/sbin/mount -F nfs "{{ nfs }}" "{{ fs }}"
+    register: fs_montado
+    async: 60
+    poll: 3
+
+  - name: Crea el directorio del servidor al cual se le hara backup en "{{ fs }}"
+    file:
+      path: "{{ fs }}/{{ ansible_hostname }}"
+      state: directory
+
+  - name: Buscar si hay backup anterior del servidor
+    find:
+      paths: "{{ fs }}/{{ ansible_hostname }}"
+      patterns: "^.*?\\.(?:ufsdump|zfs\\.gz)$"
+      use_regex: yes
+      recurse: true
+      file_type: file
+    register: archivos
+    ignore_errors: true
+
+  - name: Eliminar backup anterior en "{{ fs }}" si lo hay
+    file:
+      path: "{{ item.path }}"
+      state: absent
+    with_items: "{{ archivos.files }}"
+
+  - name: Revisa que tipo de sistema de archivos tiene el s.o
+    shell: /usr/sbin/zpool list rpool
+    register: zfs
+    ignore_errors: true
+
+  - name: Backup para sistema de archivos (ZFS)
+    block: 
+    - name: Incluir tarea para sistemas de archivos ZFS
+      include_tasks: tasks/zfs.yml
+    when: zfs.rc == 0
+
+  - name: Backup para sistema de archivos (UFS)
+    block:
+    - name: Incluir tarea para sistemas de archivos UFS
+      include_tasks: tasks/ufs.yml
+    when: zfs.rc == 1
